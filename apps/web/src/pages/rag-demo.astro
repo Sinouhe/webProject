@@ -1,0 +1,176 @@
+---
+export const prerender = false;
+
+// This value is resolved on the Astro (server) side
+const API_URL = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3001";
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>RAG Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 24px;
+      }
+      input {
+        width: min(720px, 100%);
+        padding: 10px;
+        font-size: 16px;
+      }
+      button {
+        padding: 10px 14px;
+        font-size: 16px;
+        margin-left: 8px;
+      }
+      pre {
+        white-space: pre-wrap;
+        padding: 12px;
+        background: #f6f6f6;
+        border-radius: 8px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .citations a {
+        display: inline-block;
+        margin-right: 10px;
+      }
+      .muted {
+        opacity: 0.7;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>RAG Demo</h1>
+    <p class="muted">Strict grounded answers with citations. Streaming via SSE.</p>
+
+    <div class="row">
+      <input
+        id="q"
+        type="text"
+        placeholder="Ask something..."
+        value="What is example.com used for?"
+      />
+      <button id="ask">Ask</button>
+    </div>
+
+    <h2>Answer</h2>
+    <pre id="out"></pre>
+
+    <h2>Citations</h2>
+    <div id="cites" class="citations"></div>
+
+    <!-- 
+      define:vars is the ONLY correct way here
+      API_URL becomes a real JS variable in the browser
+    -->
+    <script define:vars={{ API_URL }}>
+  const out = document.getElementById("out");
+  const cites = document.getElementById("cites");
+  const input = document.getElementById("q");
+  const btn = document.getElementById("ask");
+
+  function setCitations(list) {
+    cites.innerHTML = "";
+
+    if (!Array.isArray(list) || list.length === 0) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "No citations.";
+      cites.appendChild(p);
+      return;
+    }
+
+    const ul = document.createElement("ul");
+    for (const url of list) {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = url;
+      a.textContent = url;
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      li.appendChild(a);
+      ul.appendChild(li);
+    }
+    cites.appendChild(ul);
+  }
+
+  async function askStreaming(question) {
+    out.textContent = "";
+    setCitations([]);
+
+    const resp = await fetch(`${API_URL}/chat/stream`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+
+    if (!resp.ok || !resp.body) throw new Error(`SSE failed: HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        const lines = part.split("\n");
+        const eventLine = lines.find((l) => l.startsWith("event:"));
+        const dataLine = lines.find((l) => l.startsWith("data:"));
+        const event = eventLine ? eventLine.replace("event:", "").trim() : "";
+        const dataRaw = dataLine ? dataLine.replace("data:", "").trim() : "{}";
+        const data = JSON.parse(dataRaw);
+
+        if (event === "token") out.textContent += data.token;
+        if (event === "citations") setCitations(data.citations || []);
+        if (event === "error") throw new Error(data.message || "Unknown SSE error");
+      }
+    }
+  }
+
+  async function askFallback(question) {
+    out.textContent = "";
+    setCitations([]);
+
+    const resp = await fetch(`${API_URL}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+
+    if (!resp.ok) throw new Error(`JSON chat failed: HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    out.textContent = data.answer || "";
+    setCitations(data.citations || []);
+  }
+
+  btn.addEventListener("click", async () => {
+    const q = input.value.trim();
+    if (!q) return;
+
+    try {
+      await askStreaming(q);
+    } catch (e) {
+      await askFallback(q);
+    }
+  });
+</script>
+
+  </body>
+</html>
