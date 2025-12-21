@@ -1,0 +1,39 @@
+{
+	"name": "@ragcv/rag",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts src/cli/ingest.ts src/cli/purge.ts src/cli/chat.ts --format esm,cjs --dts --clean",
+		"chat": "node --enable-source-maps dist/cli/chat.js",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"ingest": "node --enable-source-maps dist/cli/ingest.js",
+		"purge": "node --enable-source-maps dist/cli/purge.js"
+	},
+	"dependencies": {
+		"@langchain/core": "^1.0.0",
+		"@langchain/openai": "^1.0.0",
+		"@langchain/pinecone": "^1.0.0",
+		"@langchain/textsplitters": "^1.0.1",
+		"@pinecone-database/pinecone": "^5.0.2",
+		"cheerio": "^1.1.2",
+		"dotenv": "^17.2.3",
+		"langchain": "^1.0.3",
+		"undici": "^7.16.0"
+	},
+	"devDependencies": {
+		"prettier": "^3.7.4"
+	}
+}

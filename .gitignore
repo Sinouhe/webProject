@@ -1,0 +1,18 @@
+node_modules
+dist
+.DS_Store
+
+# Env files
+.env
+.env.*.local
+
+# Logs
+*.log
+
+# Astro
+apps/web/.astro
+apps/web/dist
+
+# Nest
+apps/api/dist
+apps/api/.eslintcache
