@@ -1,22 +1,24 @@
 import { Body, Controller, Post, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
-import { ChatRequestDto } from './chat.dto';
+import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { ChatDto } from './chat.dto';
 import { ChatService } from './chat.service';
 
 @Controller()
 export class ChatController {
 	constructor(private readonly chatService: ChatService) {}
 
-	@Post('/chat')
-	@Throttle({ default: { limit: 10, ttl: 60_000 } })
-	async chat(@Body() body: ChatRequestDto) {
+	@Post('chat')
+	@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
+	async chat(@Body() body: ChatDto) {
 		return this.chatService.chat(body.question);
 	}
 
 	@Post('/chat/stream')
 	@Throttle({ default: { limit: 10, ttl: 60_000 } })
-	async chatStream(@Body() body: ChatRequestDto, @Res() res: Response) {
+	@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
+	async chatStream(@Body() body: ChatDto, @Res() res: Response) {
 		res.status(200);
 		res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
 		res.setHeader('Cache-Control', 'no-cache, no-transform');

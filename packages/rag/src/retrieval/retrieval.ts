@@ -1,6 +1,6 @@
 import type { Document } from '@langchain/core/documents';
 import type { VectorStoreRetriever } from '@langchain/core/vectorstores';
-import type { RetrievedChunk, RetrievalResult } from './types';
+import type { RetrievedChunk, RetrievalResult } from '../types';
 
 /**
  * Format retrieved documents into a single context string.

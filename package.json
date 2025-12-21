@@ -13,12 +13,14 @@
     "typecheck": "pnpm -C packages/rag typecheck && pnpm -C apps/api typecheck && pnpm -C apps/web typecheck",
     "lint": "pnpm -C apps/api lint && pnpm -C apps/web lint",
     "rag:build": "pnpm -C packages/rag build",
+    "eval": "pnpm -C packages/eval eval",
     "rag:typecheck": "pnpm -C packages/rag typecheck"
   },
   "devDependencies": {
     "@types/node": "^24.10.4",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

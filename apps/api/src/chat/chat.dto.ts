@@ -1,7 +1,7 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsString, Length } from 'class-validator';
 
-export class ChatRequestDto {
+export class ChatDto {
 	@IsString()
-	@MinLength(2)
+	@Length(3, 500)
 	question!: string;
 }

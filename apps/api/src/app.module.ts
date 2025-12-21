@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ChatModule } from './chat/chat.module';
 import { IngestModule } from './ingest/ingest.module';
+import { HealthModule } from './health/health.module';
+import { DebugModule } from './debug/debug.module';
 
 @Module({
 	imports: [
@@ -13,6 +15,8 @@ import { IngestModule } from './ingest/ingest.module';
 		]),
 		ChatModule,
 		IngestModule,
+		DebugModule,
+		HealthModule,
 	],
 })
 export class AppModule {}

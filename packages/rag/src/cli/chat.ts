@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import type { RagConfig } from '../types.js';
 import { createRetriever } from '../retriever.js';
-import { retrieveContext } from '../retrieval.js';
+import { retrieveContext } from '../retrieval/retrieval.js';
 import { answerQuestionStrict } from '../answer.js';
 
 /**

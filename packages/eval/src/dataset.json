@@ -1,0 +1,16 @@
+[
+  {
+    "id": "ex-1",
+    "question": "What is example.com used for?",
+    "expectedMustIncludeAny": ["documentation", "illustrative examples"],
+    "expectCitationsMin": 1,
+    "expectIdk": false
+  },
+  {
+    "id": "ex-2",
+    "question": "Who is the president of France?",
+    "expectedMustIncludeAny": [],
+    "expectCitationsMin": 0,
+    "expectIdk": true
+  }
+]
