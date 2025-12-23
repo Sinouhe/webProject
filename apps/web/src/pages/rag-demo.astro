@@ -46,6 +46,41 @@ const API_URL = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3001";
         opacity: 0.7;
         font-size: 14px;
       }
+      .debug {
+        margin-top: 16px;
+        padding: 12px;
+        background: #f6f6f6;
+        border-radius: 8px;
+      }
+      .debug h3 {
+        margin: 0 0 8px 0;
+      }
+      .debug-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding-left: 18px;
+      }
+      .debug-item {
+        background: #fff;
+        border-radius: 8px;
+        padding: 10px;
+        border: 1px solid rgba(0,0,0,0.08);
+      }
+      .debug-meta {
+        font-size: 13px;
+        opacity: 0.8;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .debug-preview {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
     </style>
   </head>
 
@@ -61,6 +96,9 @@ const API_URL = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3001";
         value="What is example.com used for?"
       />
       <button id="ask">Ask</button>
+
+      <!-- NEW: retrieval debug button -->
+      <button id="toggle-debug" type="button">Show retrieval debug</button>
     </div>
 
     <h2>Answer</h2>
@@ -69,108 +107,219 @@ const API_URL = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3001";
     <h2>Citations</h2>
     <div id="cites" class="citations"></div>
 
+    <!-- NEW: retrieval debug panel -->
+    <section id="debug-panel" class="debug" style="display: none;">
+      <h3>Retrieval debug</h3>
+      <p id="debug-status" class="muted">Click “Show retrieval debug” to load vector search results.</p>
+      <ol id="debug-list" class="debug-list"></ol>
+    </section>
+
     <!-- 
       define:vars is the ONLY correct way here
       API_URL becomes a real JS variable in the browser
     -->
     <script define:vars={{ API_URL }}>
-  const out = document.getElementById("out");
-  const cites = document.getElementById("cites");
-  const input = document.getElementById("q");
-  const btn = document.getElementById("ask");
+      const out = document.getElementById("out");
+      const cites = document.getElementById("cites");
+      const input = document.getElementById("q");
+      const btn = document.getElementById("ask");
 
-  function setCitations(list) {
-    cites.innerHTML = "";
+      // NEW: debug UI
+      const debugBtn = document.getElementById("toggle-debug");
+      const debugPanel = document.getElementById("debug-panel");
+      const debugStatus = document.getElementById("debug-status");
+      const debugList = document.getElementById("debug-list");
 
-    if (!Array.isArray(list) || list.length === 0) {
-      const p = document.createElement("p");
-      p.className = "muted";
-      p.textContent = "No citations.";
-      cites.appendChild(p);
-      return;
-    }
+      let lastQuestion = input.value.trim();
 
-    const ul = document.createElement("ul");
-    for (const url of list) {
-      const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.href = url;
-      a.textContent = url;
-      a.target = "_blank";
-      a.rel = "noreferrer";
-      li.appendChild(a);
-      ul.appendChild(li);
-    }
-    cites.appendChild(ul);
-  }
+      function setCitations(list) {
+        cites.innerHTML = "";
 
-  async function askStreaming(question) {
-    out.textContent = "";
-    setCitations([]);
+        if (!Array.isArray(list) || list.length === 0) {
+          const p = document.createElement("p");
+          p.className = "muted";
+          p.textContent = "No citations.";
+          cites.appendChild(p);
+          return;
+        }
 
-    const resp = await fetch(`${API_URL}/chat/stream`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-
-    if (!resp.ok || !resp.body) throw new Error(`SSE failed: HTTP ${resp.status}`);
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-
-      for (const part of parts) {
-        const lines = part.split("\n");
-        const eventLine = lines.find((l) => l.startsWith("event:"));
-        const dataLine = lines.find((l) => l.startsWith("data:"));
-        const event = eventLine ? eventLine.replace("event:", "").trim() : "";
-        const dataRaw = dataLine ? dataLine.replace("data:", "").trim() : "{}";
-        const data = JSON.parse(dataRaw);
-
-        if (event === "token") out.textContent += data.token;
-        if (event === "citations") setCitations(data.citations || []);
-        if (event === "error") throw new Error(data.message || "Unknown SSE error");
+        const ul = document.createElement("ul");
+        for (const url of list) {
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.href = url;
+          a.textContent = url;
+          a.target = "_blank";
+          a.rel = "noreferrer";
+          li.appendChild(a);
+          ul.appendChild(li);
+        }
+        cites.appendChild(ul);
       }
-    }
-  }
 
-  async function askFallback(question) {
-    out.textContent = "";
-    setCitations([]);
+      function clearDebug() {
+        debugList.innerHTML = "";
+      }
 
-    const resp = await fetch(`${API_URL}/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
+      function renderDebugChunks(chunks) {
+        clearDebug();
 
-    if (!resp.ok) throw new Error(`JSON chat failed: HTTP ${resp.status}`);
-    const data = await resp.json();
+        if (!Array.isArray(chunks) || chunks.length === 0) {
+          debugStatus.textContent = "No chunks returned.";
+          return;
+        }
 
-    out.textContent = data.answer || "";
-    setCitations(data.citations || []);
-  }
+        debugStatus.textContent = `Top chunks: ${chunks.length}`;
 
-  btn.addEventListener("click", async () => {
-    const q = input.value.trim();
-    if (!q) return;
+        for (const ch of chunks) {
+          const li = document.createElement("li");
+          li.className = "debug-item";
 
-    try {
-      await askStreaming(q);
-    } catch (e) {
-      await askFallback(q);
-    }
-  });
-</script>
+          const meta = document.createElement("div");
+          meta.className = "debug-meta";
 
+          const source = ch.source ?? null;
+          const score = typeof ch.score === "number" ? ch.score : null;
+
+          const sourceSpan = document.createElement("span");
+          sourceSpan.innerHTML = source
+            ? `source: <a href="${source}" target="_blank" rel="noreferrer">${source}</a>`
+            : "source: (none)";
+
+          const scoreSpan = document.createElement("span");
+          scoreSpan.textContent = score !== null ? `score: ${score}` : "score: (n/a)";
+
+          meta.appendChild(sourceSpan);
+          meta.appendChild(scoreSpan);
+
+          const preview = document.createElement("div");
+          preview.className = "debug-preview";
+
+          // Your API returns contentPreview; fallback just in case
+          const text = (ch.contentPreview ?? ch.content ?? "").toString();
+          preview.textContent = text;
+
+          li.appendChild(meta);
+          li.appendChild(preview);
+
+          debugList.appendChild(li);
+        }
+      }
+
+      async function loadRetrievalDebug(question) {
+        debugStatus.textContent = "Loading retrieval debug...";
+        clearDebug();
+
+        const url = `${API_URL}/debug/retrieval?q=${encodeURIComponent(question)}`;
+
+        const resp = await fetch(url, { method: "GET" });
+        if (!resp.ok) throw new Error(`Debug retrieval failed: HTTP ${resp.status}`);
+
+        const data = await resp.json();
+        // Expected shape: { chunks: [...] }
+        renderDebugChunks(data.chunks || []);
+      }
+
+      async function askStreaming(question) {
+        out.textContent = "";
+        setCitations([]);
+
+        const resp = await fetch(`${API_URL}/chat/stream`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+
+        if (!resp.ok || !resp.body) throw new Error(`SSE failed: HTTP ${resp.status}`);
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            const lines = part.split("\n");
+            const eventLine = lines.find((l) => l.startsWith("event:"));
+            const dataLine = lines.find((l) => l.startsWith("data:"));
+            const event = eventLine ? eventLine.replace("event:", "").trim() : "";
+            const dataRaw = dataLine ? dataLine.replace("data:", "").trim() : "{}";
+            const data = JSON.parse(dataRaw);
+
+            if (event === "token") out.textContent += data.token;
+            if (event === "citations") setCitations(data.citations || []);
+            if (event === "error") throw new Error(data.message || "Unknown SSE error");
+          }
+        }
+      }
+
+      async function askFallback(question) {
+        out.textContent = "";
+        setCitations([]);
+
+        const resp = await fetch(`${API_URL}/chat`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+
+        if (!resp.ok) throw new Error(`JSON chat failed: HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        out.textContent = data.answer || "";
+        setCitations(data.citations || []);
+      }
+
+      btn.addEventListener("click", async () => {
+        const q = input.value.trim();
+        if (!q) return;
+
+        lastQuestion = q;
+
+        // If debug panel is open, clear it because answer is changing.
+        if (debugPanel.style.display !== "none") {
+          debugStatus.textContent = "Click “Show retrieval debug” to load vector search results.";
+          clearDebug();
+        }
+
+        try {
+          await askStreaming(q);
+        } catch (e) {
+          await askFallback(q);
+        }
+      });
+
+      // NEW: toggle + load debug on demand
+      debugBtn.addEventListener("click", async () => {
+        const isOpen = debugPanel.style.display !== "none";
+
+        if (isOpen) {
+          debugPanel.style.display = "none";
+          debugBtn.textContent = "Show retrieval debug";
+          return;
+        }
+
+        debugPanel.style.display = "block";
+        debugBtn.textContent = "Hide retrieval debug";
+
+        const q = (lastQuestion || input.value.trim());
+        if (!q) {
+          debugStatus.textContent = "Enter a question first.";
+          return;
+        }
+
+        try {
+          await loadRetrievalDebug(q);
+        } catch (err) {
+          debugStatus.textContent = err instanceof Error ? err.message : "Failed to load retrieval debug.";
+        }
+      });
+    </script>
   </body>
 </html>

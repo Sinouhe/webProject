@@ -30,6 +30,7 @@ export async function debugRetrieval(params: { config: RagConfig; question: stri
 		const score = (md.score as number | undefined) ?? (md._score as number | undefined) ?? null;
 
 		return {
+			contentPreview: d.pageContent.slice(0, 200),
 			content: d.pageContent ?? '',
 			source,
 			score,
