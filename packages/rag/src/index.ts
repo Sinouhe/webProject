@@ -5,3 +5,4 @@ export * from './answer';
 export * from './ingest';
 export * from './retrieval/debugRetrieval';
 export * from './chat/runChatStrict';
+export * from './admin/purgePineconeNamespace';

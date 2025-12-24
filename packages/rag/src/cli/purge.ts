@@ -1,29 +1,66 @@
-import "dotenv/config";
-import { Pinecone } from "@pinecone-database/pinecone";
+// packages/rag/src/cli/purge.ts
+
+import 'dotenv/config';
+
+import { purgeRagCaches, getRagCacheStats } from '../admin/ragCacheAdmin';
+import { purgePineconeNamespace } from '../admin/purgePineconeNamespace';
+
+type Target = 'pinecone' | 'caches';
+type Scope = 'all' | 'retrieval' | 'retriever';
+
+function readArg(name: string): string | null {
+	const args = process.argv.slice(2);
+	const idx = args.indexOf(name);
+	return idx >= 0 ? (args[idx + 1] ?? null) : null;
+}
 
 async function main() {
-  const apiKey = process.env.PINECONE_API_KEY ?? "";
-  const indexName = process.env.PINECONE_INDEX ?? "";
-  const namespace = process.env.PINECONE_NAMESPACE ?? "";
+	const targetRaw = readArg('--target');
+	if (!targetRaw) {
+		throw new Error('Missing --target. Allowed: caches | pinecone');
+	}
 
-  if (!apiKey || !indexName) {
-    throw new Error("Missing env vars: PINECONE_API_KEY, PINECONE_INDEX");
-  }
-  if (!namespace || namespace === "__default__") {
-    throw new Error("Refusing to purge: set PINECONE_NAMESPACE to a non-default value (e.g. dev).");
-  }
+	const target = targetRaw as Target;
+	if (target !== 'pinecone' && target !== 'caches') {
+		throw new Error('Invalid --target. Allowed: caches | pinecone');
+	}
 
-  const pinecone = new Pinecone({ apiKey });
-  const index = pinecone.index(indexName);
+	if (target === 'pinecone') {
+		const apiKey = process.env.PINECONE_API_KEY ?? '';
+		const indexName = process.env.PINECONE_INDEX ?? '';
+		const namespace = process.env.PINECONE_NAMESPACE ?? '';
 
-  await index.namespace(namespace).deleteAll();
+		const result = await purgePineconeNamespace({ apiKey, indexName, namespace });
+		// eslint-disable-next-line no-console
+		console.log(JSON.stringify(result, null, 2));
+		return;
+	}
 
-  // eslint-disable-next-line no-console
-  console.log(JSON.stringify({ ok: true, purgedNamespace: namespace }, null, 2));
+	// target === 'caches'
+	const scopeRaw = readArg('--scope');
+	if (!scopeRaw) {
+		throw new Error('Missing --scope. Allowed: all | retrieval | retriever');
+	}
+
+	const scope = scopeRaw as Scope;
+	if (
+		scope !== 'all' &&
+		scope !== 'retrieval' &&
+		scope !== 'retriever' &&
+		scope !== 'embeddings'
+	) {
+		throw new Error('Invalid --scope. Allowed: all | retrieval | retriever');
+	}
+
+	purgeRagCaches(scope);
+
+	const stats = getRagCacheStats();
+	// eslint-disable-next-line no-console
+	console.log(JSON.stringify({ ok: true, purged: scope, stats }, null, 2));
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
+	// eslint-disable-next-line no-console
+	console.error(err);
+	process.exit(1);
 });

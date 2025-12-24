@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { runChatStrict } from '../chat/runChatStrict.js';
-import type { RagConfig } from '../types.js';
+import { runChatStrict } from '../chat/runChatStrict';
+import type { RagConfig } from '../types';
 
 async function main() {
 	const args = process.argv.slice(2);

@@ -3,11 +3,17 @@
 import { createHash } from 'crypto';
 import type { VectorStoreRetriever } from '@langchain/core/vectorstores';
 
-import type { RagConfig } from '../types.js';
-import { MemoryCache } from '../cache/cache.js';
-import { createRetriever } from '../retriever.js';
-import { retrieveContext } from '../retrieval/retrieval.js';
-import { answerQuestionStrict, streamAnswerStrict } from '../answer.js';
+import type { RagConfig } from '../types';
+import { createRetriever } from '../retriever';
+import { retrieveContext } from '../retrieval/retrieval';
+import { answerQuestionStrict, streamAnswerStrict } from '../answer';
+
+import {
+	retrieverCache,
+	retrievalCache,
+	RETRIEVAL_CACHE_VERSION,
+	RETRIEVAL_CACHE_TTL_MS,
+} from '../cache/ragCaches';
 
 type RetrievalResult = Awaited<ReturnType<typeof retrieveContext>>;
 
@@ -22,34 +28,6 @@ export type RunChatStrictResult =
 	| { mode: 'non-stream'; answer: string; citations: unknown }
 	| { mode: 'stream'; citations: unknown };
 
-/* ===========================
-   CACHES (prod-safe)
-=========================== */
-
-const RETRIEVER_CACHE_TTL_MS = Number(
-	process.env.RAG_CACHE_RETRIEVER_TTL_MS ?? String(24 * 60 * 60 * 1000)
-);
-
-const RETRIEVAL_CACHE_TTL_MS = Number(
-	process.env.RAG_CACHE_RETRIEVAL_TTL_MS ?? String(24 * 60 * 60 * 1000)
-);
-
-const RETRIEVAL_CACHE_VERSION = process.env.RAG_CACHE_RETRIEVAL_VERSION ?? 'v1';
-
-const retrieverCache = new MemoryCache({
-	maxEntries: 50,
-	defaultTtlMs: RETRIEVER_CACHE_TTL_MS,
-});
-
-const retrievalCache = new MemoryCache({
-	maxEntries: 2000,
-	defaultTtlMs: RETRIEVAL_CACHE_TTL_MS,
-});
-
-/* ===========================
-   HELPERS
-=========================== */
-
 function normalize(text: string): string {
 	return text
 		.replace(/\u00A0/g, ' ')
@@ -62,18 +40,18 @@ function sha256(input: string): string {
 }
 
 function retrieverKey(cfg: RagConfig): string {
-	return sha256(
+	return `retriever:${sha256(
 		JSON.stringify({
 			index: cfg.pineconeIndex,
 			namespace: cfg.pineconeNamespace ?? null,
 			embeddingModel: cfg.embeddingModel ?? null,
 			topK: cfg.topK ?? 6,
 		})
-	);
+	)}`;
 }
 
 function retrievalKey(cfg: RagConfig, question: string): string {
-	return sha256(
+	return `retrieval:${sha256(
 		JSON.stringify({
 			v: RETRIEVAL_CACHE_VERSION,
 			q: normalize(question),
@@ -81,16 +59,12 @@ function retrievalKey(cfg: RagConfig, question: string): string {
 			namespace: cfg.pineconeNamespace ?? null,
 			topK: cfg.topK ?? 6,
 		})
-	);
+	)}`;
 }
 
 async function getRetriever(cfg: RagConfig): Promise<VectorStoreRetriever> {
 	return retrieverCache.getOrSet(retrieverKey(cfg), () => createRetriever(cfg));
 }
-
-/* ===========================
-   MAIN ENTRYPOINT
-=========================== */
 
 export async function runChatStrict(params: RunChatStrictParams): Promise<RunChatStrictResult> {
 	const { config, question, isStream, onToken } = params;
@@ -103,7 +77,8 @@ export async function runChatStrict(params: RunChatStrictParams): Promise<RunCha
 
 	const retrieval: RetrievalResult = await retrievalCache.getOrSet(
 		retrievalKey(config, question),
-		() => retrieveContext(retriever, question)
+		() => retrieveContext(retriever, question),
+		RETRIEVAL_CACHE_TTL_MS
 	);
 
 	if (isStream) {
@@ -125,9 +100,5 @@ export async function runChatStrict(params: RunChatStrictParams): Promise<RunCha
 		sources: retrieval.sources,
 	});
 
-	return {
-		mode: 'non-stream',
-		answer: result.answer,
-		citations: result.citations,
-	};
+	return { mode: 'non-stream', answer: result.answer, citations: result.citations };
 }
