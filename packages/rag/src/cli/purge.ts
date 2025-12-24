@@ -49,7 +49,7 @@ async function main() {
 		scope !== 'retriever' &&
 		scope !== 'embeddings'
 	) {
-		throw new Error('Invalid --scope. Allowed: all | retrieval | retriever');
+		throw new Error('Invalid --scope. Allowed: all | retrieval | retriever | embeddings');
 	}
 
 	purgeRagCaches(scope);
