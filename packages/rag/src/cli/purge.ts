@@ -1,12 +1,7 @@
-// packages/rag/src/cli/purge.ts
-
 import 'dotenv/config';
 
-import { purgeRagCaches, getRagCacheStats } from '../admin/ragCacheAdmin';
-import { purgePineconeNamespace } from '../admin/purgePineconeNamespace';
-
-type Target = 'pinecone' | 'caches';
-type Scope = 'all' | 'retrieval' | 'retriever';
+import type { PurgeTarget, PurgeCacheScope } from '../admin/purge';
+import { purgeAdmin } from '../admin/purge';
 
 function readArg(name: string): string | null {
 	const args = process.argv.slice(2);
@@ -20,7 +15,7 @@ async function main() {
 		throw new Error('Missing --target. Allowed: caches | pinecone');
 	}
 
-	const target = targetRaw as Target;
+	const target = targetRaw as PurgeTarget;
 	if (target !== 'pinecone' && target !== 'caches') {
 		throw new Error('Invalid --target. Allowed: caches | pinecone');
 	}
@@ -30,36 +25,37 @@ async function main() {
 		const indexName = process.env.PINECONE_INDEX ?? '';
 		const namespace = process.env.PINECONE_NAMESPACE ?? '';
 
-		const result = await purgePineconeNamespace({ apiKey, indexName, namespace });
+		const result = await purgeAdmin({
+			target: 'pinecone',
+			pinecone: { apiKey, indexName, namespace },
+		});
+
 		// eslint-disable-next-line no-console
 		console.log(JSON.stringify(result, null, 2));
+
+		if (!result.ok) process.exit(1);
 		return;
 	}
 
 	// target === 'caches'
 	const scopeRaw = readArg('--scope');
 	if (!scopeRaw) {
-		throw new Error('Missing --scope. Allowed: all | retrieval | retriever');
-	}
-
-	const scope = scopeRaw as Scope;
-	if (
-		scope !== 'all' &&
-		scope !== 'retrieval' &&
-		scope !== 'retriever' &&
-		scope !== 'embeddings' &&
-		scope !== 'answer'
-	) {
 		throw new Error(
-			'Invalid --scope. Allowed: all | retrieval | retriever | embeddings | answer'
+			'Missing --scope. Allowed: all | retrieval | retriever | embeddings | answer'
 		);
 	}
 
-	purgeRagCaches(scope);
+	const scope = scopeRaw as PurgeCacheScope;
 
-	const stats = getRagCacheStats();
+	const result = await purgeAdmin({
+		target: 'caches',
+		caches: { scope },
+	});
+
 	// eslint-disable-next-line no-console
-	console.log(JSON.stringify({ ok: true, purged: scope, stats }, null, 2));
+	console.log(JSON.stringify(result, null, 2));
+
+	if (!result.ok) process.exit(1);
 }
 
 main().catch((err) => {
