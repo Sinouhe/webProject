@@ -1,20 +1,9 @@
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
-import type { RagConfig } from '../types';
-import { ingestUrls } from '../ingest/ingestUrls';
 
-/**
- * Ingestion CLI:
- * - Reads URLs from a text file (--urls path/to/file.txt)
- * - Or accepts repeated --url https://... flags
- * - Fetches HTML -> extracts text -> splits -> (dry-run by default) -> optional upsert with --commit
- *
- * Examples:
- *   pnpm -C packages/rag ingest --urls data/urls.txt
- *   pnpm -C packages/rag ingest --urls data/urls.txt --commit
- *   pnpm -C packages/rag ingest --url https://example.com/ --url https://www.iana.org/domains/reserved
- *   pnpm -C packages/rag ingest --url https://example.com/ --commit
- */
+import type { RagConfig } from '../types';
+import { ingestAdmin } from '../admin/ingest';
+
 function getFlagValue(args: string[], flag: string): string | null {
 	const i = args.indexOf(flag);
 	if (i < 0) return null;
@@ -58,35 +47,30 @@ async function main() {
 		topK: 6,
 	};
 
-	if (!cfg.openAiApiKey || !cfg.pineconeApiKey || !cfg.pineconeIndex) {
-		throw new Error('Missing env vars: OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX');
-	}
-	if (!cfg.pineconeNamespace) {
-		throw new Error(
-			'Refusing to ingest: PINECONE_NAMESPACE is empty. Set it explicitly (e.g. dev).'
-		);
-	}
-
 	let urls: string[] = [];
 
-	// Prefer explicit inline --url flags over file when both are present (predictable behavior).
 	if (inlineUrls.length > 0) {
 		urls = inlineUrls;
 	} else if (urlsFile) {
 		urls = await readUrlsFile(urlsFile);
 	} else {
-		throw new Error(
-			'Missing input. Use either --urls <file> or repeated --url <url>.\n' +
-				'Example: pnpm -C packages/rag ingest --urls data/urls.txt\n' +
-				'Example: pnpm -C packages/rag ingest --url https://example.com/ --commit'
-		);
+		const result = {
+			ok: false,
+			error: {
+				code: 'MISSING_PARAM',
+				message:
+					'Missing input. Use either --urls <file> or repeated --url <url>.\n' +
+					'Example: pnpm -C packages/rag ingest --urls data/urls.txt\n' +
+					'Example: pnpm -C packages/rag ingest --url https://example.com/ --commit',
+			},
+		};
+		// eslint-disable-next-line no-console
+		console.log(JSON.stringify(result, null, 2));
+		process.exit(1);
+		return;
 	}
 
-	if (urls.length === 0) {
-		throw new Error('No URLs provided.');
-	}
-
-	const result = await ingestUrls({
+	const result = await ingestAdmin({
 		config: cfg,
 		urls,
 		maxPages,
@@ -96,10 +80,16 @@ async function main() {
 
 	// eslint-disable-next-line no-console
 	console.log(JSON.stringify(result, null, 2));
+
+	if (!result.ok) process.exit(1);
 }
 
 main().catch((err) => {
+	// CLI last-resort (should be rare since admin returns ok:false).
+	const msg = err instanceof Error ? err.message : String(err);
 	// eslint-disable-next-line no-console
-	console.error(err);
+	console.log(
+		JSON.stringify({ ok: false, error: { code: 'INGEST_FAILED', message: msg } }, null, 2)
+	);
 	process.exit(1);
 });
