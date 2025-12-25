@@ -97,6 +97,7 @@ function replayAnswer(answer: string, onToken: (token: string) => void): void {
 	}
 }
 
+// avoid recreate a retriever each call, it costs on perf and network.
 async function getRetriever(cfg: RagConfig): Promise<VectorStoreRetriever> {
 	return retrieverCache.getOrSet(retrieverKey(cfg), () => createRetriever(cfg));
 }
