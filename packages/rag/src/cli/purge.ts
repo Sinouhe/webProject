@@ -47,9 +47,12 @@ async function main() {
 		scope !== 'all' &&
 		scope !== 'retrieval' &&
 		scope !== 'retriever' &&
-		scope !== 'embeddings'
+		scope !== 'embeddings' &&
+		scope !== 'answer'
 	) {
-		throw new Error('Invalid --scope. Allowed: all | retrieval | retriever | embeddings');
+		throw new Error(
+			'Invalid --scope. Allowed: all | retrieval | retriever | embeddings | answer'
+		);
 	}
 
 	purgeRagCaches(scope);
